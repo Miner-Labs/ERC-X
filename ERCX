@@ -169,6 +169,16 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
         emit Transfer(address(0), msg.sender, totalSupply);
     }
 
+    /**
+     * @dev Returns if 1155 events are enabled.
+     * Override or change to true for 1155 flag on etherscan.
+     * In 1155 mode Etherscan ignores CA reported balances and incorrectly 
+     * calculates wallet balances
+     */
+    function erc1155Enabled() internal pure virtual returns (bool) {
+        return false;
+    }
+
     /** @notice Initialization function to set pairs / etc
      *  saving gas by avoiding mint / burn on unnecessary targets
      */
@@ -399,7 +409,8 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             )
         }
 
-        emit TransferSingle(operator, from, to, id, amount);
+        if(erc1155Enabled())
+            emit TransferSingle(operator, from, to, id, amount);
 
         _afterTokenTransfer(operator, from, to, ids);
 
@@ -483,7 +494,8 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             }
         }
 
-        emit TransferBatch(operator, from, to, ids, amounts);
+        if(erc1155Enabled())
+            emit TransferBatch(operator, from, to, ids, amounts);
 
         _afterTokenTransfer(operator, from, to, ids);
 
@@ -598,7 +610,8 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             }
         }
 
-        emit TransferBatch(operator, address(0), to, ids, amounts);
+        if(erc1155Enabled())
+            emit TransferBatch(operator, address(0), to, ids, amounts);
 
         _afterTokenTransfer(operator, address(0), to, ids);
 
@@ -646,7 +659,8 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             )
         }
 
-        emit TransferSingle(operator, from, address(0), id, 1);
+        if(erc1155Enabled())
+            emit TransferSingle(operator, from, address(0), id, 1);
 
         _afterTokenTransfer(operator, from, address(0), ids);
     }
@@ -709,7 +723,8 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             }
         }
         
-        emit TransferBatch(operator, from, address(0), ids, amounts);
+        if(erc1155Enabled())
+            emit TransferBatch(operator, from, address(0), ids, amounts);
 
         _afterTokenTransfer(operator, from, address(0), ids);
 
@@ -766,10 +781,12 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             }
         }
 
-        if(amount == 1)
-            emit TransferSingle(operator, from, address(0), ids[0], 1);
-        else
-            emit TransferBatch(operator, from, address(0), ids, amounts);
+        if(erc1155Enabled()) {
+            if(amount == 1)
+                emit TransferSingle(operator, from, address(0), ids[0], 1);
+            else
+                emit TransferBatch(operator, from, address(0), ids, amounts);
+        }
         
 
         _afterTokenTransfer(operator, from, address(0), ids);
