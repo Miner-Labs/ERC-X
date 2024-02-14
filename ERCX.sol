@@ -988,6 +988,9 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
         if (to == address(0)) {
             revert ERC20InvalidReceiver(address(0));
         }
+        if (from == to) {
+            revert ERC20InvalidSender(from);
+        }
         _update(from, to, value, mint);
     }
 
