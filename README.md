@@ -8,7 +8,7 @@ ERC-X is gas-efficient and scales to nearly any project size, with adjustable to
 
 ## Usage
 
-To deploy your own ERC-X token, look at the example file provided ERC-X.sol.
+To deploy your own ERC-X token, look at the example file provided ERCX.sol.
 
 ## Switching between ERC721 and ERC1155
 
