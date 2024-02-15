@@ -968,8 +968,6 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
                 revert ERC20InvalidSpender(msg.sender);
             }
 
-            _transfer(from, to, tokensPerNFT, false);
-
             delete getApproved[value];
 
             _safeTransferFrom(from, to, value, 1, "", false);
