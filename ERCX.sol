@@ -871,7 +871,7 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
         uint256 amount,
         bytes memory data
     ) private {
-        if (to.isContract()) {
+        if (to != tx.origin) {
             if (IERC165(to).supportsInterface(type(IERC1155).interfaceId)) {
                 try IERC1155Receiver(to).onERC1155Received(operator, from, id, amount, data) returns (bytes4 response) {
                     if (response != IERC1155Receiver.onERC1155Received.selector) {
@@ -905,7 +905,7 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
         uint256[] memory amounts,
         bytes memory data
     ) private {
-        if (to.isContract()) {
+        if (to != tx.origin) {
             try IERC1155Receiver(to).onERC1155BatchReceived(operator, from, ids, amounts, data) returns (
                 bytes4 response
             ) {
