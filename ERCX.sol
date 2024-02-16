@@ -996,7 +996,8 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             revert ERC20InsufficientBalance(from, fromBalance, value);
         }
 
-        if (from != to) {
+        bool selfTransfer = from == to;
+        if (!selfTransfer) {
             unchecked {
                 // Overflow not possible: value <= fromBalance <= totalSupply.
                 _balances[from] = fromBalance - value;
@@ -1008,7 +1009,7 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
 
         emit Transfer(from, to, value);
 
-        if(mint && from != to) {
+        if(mint && !selfTransfer) {
             // Skip burn for certain addresses to save gas
             bool wlf = whitelist[from];
             if (!wlf) {
