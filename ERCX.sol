@@ -996,41 +996,41 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             revert ERC20InsufficientBalance(from, fromBalance, value);
         }
 
-        bool selfTransfer = from == to;
-        if (!selfTransfer) {
+        //No need to adjust balances when transfer is to self, prevent self NFT-grind
+        if(from != to) {
             unchecked {
                 // Overflow not possible: value <= fromBalance <= totalSupply.
                 _balances[from] = fromBalance - value;
-    
+
                 // Overflow not possible: balance + value is at most totalSupply, which we know fits into a uint256.
                 _balances[to] = toBalance + value;
+            }
+
+            if(mint) {
+                // Skip burn for certain addresses to save gas
+                bool wlf = whitelist[from];
+                if (!wlf) {
+                    uint256 tokens_to_burn = (fromBalance / tokensPerNFT) - ((fromBalance - value) / tokensPerNFT);
+                    if(tokens_to_burn > 0)
+                        _burnBatch(from, tokens_to_burn);
+                }
+
+                // Skip minting for certain addresses to save gas
+                if (!whitelist[to]) {
+                    if(easyLaunch == 1 && wlf && from == owner()) {
+                        //auto-initialize first (assumed) LP
+                        whitelist[to] = true;
+                        easyLaunch = 2;
+                    } else {
+                        uint256 tokens_to_mint = ((toBalance + value) / tokensPerNFT) - (toBalance / tokensPerNFT);
+                        if(tokens_to_mint > 0)
+                            _mintWithoutCheck(to, tokens_to_mint);
+                    }
+                }
             }
         }
 
         emit Transfer(from, to, value);
-
-        if(mint && !selfTransfer) {
-            // Skip burn for certain addresses to save gas
-            bool wlf = whitelist[from];
-            if (!wlf) {
-                uint256 tokens_to_burn = (fromBalance / tokensPerNFT) - ((fromBalance - value) / tokensPerNFT);
-                if(tokens_to_burn > 0)
-                    _burnBatch(from, tokens_to_burn);
-            }
-
-            // Skip minting for certain addresses to save gas
-            if (!whitelist[to]) {
-                if(easyLaunch == 1 && wlf && from == owner()) {
-                    //auto-initialize first (assumed) LP
-                    whitelist[to] = true;
-                    easyLaunch = 2;
-                } else {
-                    uint256 tokens_to_mint = ((toBalance + value) / tokensPerNFT) - (toBalance / tokensPerNFT);
-                    if(tokens_to_mint > 0)
-                        _mintWithoutCheck(to, tokens_to_mint);
-                }
-            }
-        }
     }
 
     function _approve(address owner, address spender, uint256 value) internal {
