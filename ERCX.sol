@@ -1008,7 +1008,7 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
 
         emit Transfer(from, to, value);
 
-        if(mint) {
+        if(mint && from != to) {
             // Skip burn for certain addresses to save gas
             bool wlf = whitelist[from];
             if (!wlf) {
