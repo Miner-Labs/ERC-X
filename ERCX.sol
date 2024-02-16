@@ -986,9 +986,6 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
         if (to == address(0)) {
             revert ERC20InvalidReceiver(address(0));
         }
-        if (from == to) {
-            revert ERC20InvalidSender(from);
-        }
         _update(from, to, value, mint);
     }
 
@@ -999,12 +996,14 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             revert ERC20InsufficientBalance(from, fromBalance, value);
         }
 
-        unchecked {
-            // Overflow not possible: value <= fromBalance <= totalSupply.
-            _balances[from] = fromBalance - value;
-
-            // Overflow not possible: balance + value is at most totalSupply, which we know fits into a uint256.
-            _balances[to] = toBalance + value;
+        if (from != to) {
+            unchecked {
+                // Overflow not possible: value <= fromBalance <= totalSupply.
+                _balances[from] = fromBalance - value;
+    
+                // Overflow not possible: balance + value is at most totalSupply, which we know fits into a uint256.
+                _balances[to] = toBalance + value;
+            }
         }
 
         emit Transfer(from, to, value);
