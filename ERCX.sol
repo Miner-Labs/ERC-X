@@ -52,7 +52,7 @@ interface IERCX {
     /**
      * Cannot burn from the address that doesn't owne the token.
      */
-    error BurnFromNonOnwerAddress();
+    error BurnFromNonOwnerAddress();
 
     /**
      * The caller must own the token or be an approved operator.
@@ -81,6 +81,9 @@ interface IERCX {
      */
     error InputLengthMistmatch();
 
+    // Contract has been re-entered during safe transfer
+    error Reentrance();
+
     function isOwnerOf(address account, uint256 id) external view returns(bool);
 }
 
@@ -102,6 +105,11 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
     using LibBitmap for LibBitmap.Bitmap;
 
     error InvalidQueryRange();
+    event WhitelistEnabled(address indexed wallet);
+    event WhitelistDisabled(address indexed wallet);
+    event URIUpdated();
+    event TransfersDelayUpdated(bool status);
+    event MaxWalletUpdated(uint256 max);
 
     // The mask of the lower 160 bits for addresses.
     uint256 private constant _BITMASK_ADDRESS = (1 << 160) - 1;
@@ -169,20 +177,25 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
         emit Transfer(address(0), msg.sender, totalSupply);
     }
 
-    /**
-     * @dev Returns if 1155 events are enabled.
-     * Override or change to true for 1155 flag on etherscan.
-     * In 1155 mode Etherscan ignores CA reported balances and incorrectly 
-     * calculates wallet balances
-     */
-    function erc1155Enabled() internal pure virtual returns (bool) {
-        return false;
-    }
-
     /** @notice Initialization function to set pairs / etc
-     *  saving gas by avoiding mint / burn on unnecessary targets
+     *  saving gas by avoiding mint / burn on unnecessary targets.
+     *  Burns held NFTs if entering whitelist mode.
      */
     function setWhitelist(address target, bool state) public virtual onlyOwner {
+        require(whitelist[target] != state, "No change to status");
+
+        if(state) {
+            uint256 bal = balanceOf(target,0,_nextTokenId());
+            if(bal > 0) 
+                _burnBatch(target, bal);
+            emit WhitelistEnabled(target);
+        } else {
+            uint256 bal = balanceOf(target);
+            uint256 tokens_to_mint = bal / tokensPerNFT;
+            if(tokens_to_mint > 0)
+                _mintWithoutCheck(target, tokens_to_mint);
+            emit WhitelistDisabled(target);
+        }
         whitelist[target] = state;
     }
 
@@ -409,13 +422,15 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             )
         }
 
-        if(erc1155Enabled())
-            emit TransferSingle(operator, from, to, id, amount);
+        emit TransferSingle(operator, from, to, id, amount);
 
         _afterTokenTransfer(operator, from, to, ids);
 
-        if(check)
+        if(check) {
+            uint256 end = _nextTokenId();
             _doSafeTransferAcceptanceCheck(operator, from, to, id, amount, data);
+            if (_nextTokenId() != end) revert Reentrance();
+        }
     }
 
     /**
@@ -494,12 +509,13 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             }
         }
 
-        if(erc1155Enabled())
-            emit TransferBatch(operator, from, to, ids, amounts);
+        emit TransferBatch(operator, from, to, ids, amounts);
 
         _afterTokenTransfer(operator, from, to, ids);
-
+   
+        uint256 tokID = _nextTokenId();
         _doSafeBatchTransferAcceptanceCheck(operator, from, to, ids, amounts, data);
+        if (_nextTokenId() != tokID) revert Reentrance();
     }
 
     /**
@@ -525,13 +541,6 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
         _uri = newuri;
     }
 
-    function _mint(
-        address to,
-        uint256 amount
-    ) internal virtual {
-        _mint(to, amount, "");
-    }
-
     /**
      * @dev Creates `amount` tokens, and assigns them to `to`.
      *
@@ -551,9 +560,9 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
     ) internal virtual {
        (uint256[] memory ids, uint256[] memory amounts) =  _mintWithoutCheck(to, amount);
 
-        uint256 end = _currentIndex;
+        uint256 end = _nextTokenId();
         _doSafeBatchTransferAcceptanceCheck(_msgSender(), address(0), to, ids, amounts, data);
-        if (_currentIndex != end) revert();
+        if (_nextTokenId() != end) revert Reentrance();
     }
 
     function _mintWithoutCheck(
@@ -575,7 +584,7 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
         uint256 startTokenId = _nextTokenId();
 
         unchecked {
-            require(type(uint256).max - amount >= startTokenId);
+            require(type(uint256).max - amount >= startTokenId, "Minting limits reached");
             for(uint256 i = 0; i < amount; i++) {
                 ids[i] = startTokenId + i;
                 amounts[i] = 1;
@@ -610,8 +619,7 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             }
         }
 
-        if(erc1155Enabled())
-            emit TransferBatch(operator, address(0), to, ids, amounts);
+        emit TransferBatch(operator, address(0), to, ids, amounts);
 
         _afterTokenTransfer(operator, address(0), to, ids);
 
@@ -641,7 +649,7 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
         _beforeTokenTransfer(operator, from, address(0), ids);
 
         if(!_owned[from].get(id)) {
-            revert BurnFromNonOnwerAddress();
+            revert BurnFromNonOwnerAddress();
         }
 
         _owned[from].unset(id);
@@ -659,8 +667,7 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             )
         }
 
-        if(erc1155Enabled())
-            emit TransferSingle(operator, from, address(0), id, 1);
+        emit TransferSingle(operator, from, address(0), id, 1);
 
         _afterTokenTransfer(operator, from, address(0), ids);
     }
@@ -694,7 +701,7 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
                 amounts[i] = 1;
                 uint256 id = ids[i];
                 if(!_owned[from].get(id)) {
-                    revert BurnFromNonOnwerAddress();
+                    revert BurnFromNonOwnerAddress();
                 }
                 _owned[from].unset(id);
             }
@@ -723,8 +730,7 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             }
         }
         
-        if(erc1155Enabled())
-            emit TransferBatch(operator, from, address(0), ids, amounts);
+        emit TransferBatch(operator, from, address(0), ids, amounts);
 
         _afterTokenTransfer(operator, from, address(0), ids);
 
@@ -749,6 +755,7 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             for(uint256 i = 0; i < amount; i++) {
                 amounts[i] = 1;
                 uint256 id = _owned[from].findLastSet(searchFrom);
+                if(id == LibBitmap.NOT_FOUND) revert BurnFromNonOwnerAddress();
                 ids[i] = id;
                 _owned[from].unset(id);
                 searchFrom = id;
@@ -781,12 +788,10 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
             }
         }
 
-        if(erc1155Enabled()) {
-            if(amount == 1)
-                emit TransferSingle(operator, from, address(0), ids[0], 1);
-            else
-                emit TransferBatch(operator, from, address(0), ids, amounts);
-        }
+        if(amount == 1)
+            emit TransferSingle(operator, from, address(0), ids[0], 1);
+        else
+            emit TransferBatch(operator, from, address(0), ids, amounts);
         
 
         _afterTokenTransfer(operator, from, address(0), ids);
@@ -871,7 +876,7 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
         uint256 amount,
         bytes memory data
     ) private {
-        if (to != tx.origin) {
+        if (to.code.length > 0) {
             if (IERC165(to).supportsInterface(type(IERC1155).interfaceId)) {
                 try IERC1155Receiver(to).onERC1155Received(operator, from, id, amount, data) returns (bytes4 response) {
                     if (response != IERC1155Receiver.onERC1155Received.selector) {
@@ -905,7 +910,7 @@ contract ERCX is Context, ERC165, IERC1155, IERC1155MetadataURI, IERCX, IERC20Me
         uint256[] memory amounts,
         bytes memory data
     ) private {
-        if (to != tx.origin) {
+        if (to.code.length > 0) {
             try IERC1155Receiver(to).onERC1155BatchReceived(operator, from, ids, amounts, data) returns (
                 bytes4 response
             ) {
@@ -1175,22 +1180,28 @@ contract ERC_X is ERCX {
 
     function toggleDelay() external onlyOwner {
         transferDelay = !transferDelay;
+        emit TransfersDelayUpdated(transferDelay);
     }
 
     function setMaxWallet(uint256 percent) external onlyOwner {
+        require(percent > 0, "Cannot disable normal trading");
         maxWallet = totalSupply * percent / 100;
+        emit MaxWalletUpdated(totalSupply * percent / 100);
     }
 
     function setDataURI(string memory _dataURI) public onlyOwner {
         dataURI = _dataURI;
+        emit URIUpdated();
     }
 
     function setTokenURI(string memory _tokenURI) public onlyOwner {
         baseTokenURI = _tokenURI;
+        emit URIUpdated();
     }
 
     function setURI(string memory newuri) external onlyOwner {
         _setURI(newuri);
+        emit URIUpdated();
     }
 
     function tokenURI(uint256 id) public view returns (string memory) {
@@ -1203,9 +1214,9 @@ contract ERC_X is ERCX {
         else {
             uint8 seed = uint8(bytes1(keccak256(abi.encodePacked(id))));
 
-            string memory image;
-            string memory color;
-            string memory description;
+            string memory image = "";
+            string memory color = "";
+            string memory description = "";
 
             if (seed <= 63) {
                 image = "GQRhWyF/Diamond.jpg";
@@ -1219,7 +1230,7 @@ contract ERC_X is ERCX {
                 image = "FJmdrdm/Silver.jpg";
                 color = "Silver";
                 description = "Refined NFTs powered by ERC1155. The silver NFTs are mined by seasoned enthusiasts, adding an extra layer of sophistication to your portfolio.";
-            } else if (seed <= 255) {
+            } else {
                 image = "YLG3Jvc/Bronze.jpg";
                 color = "Bronze";
                 description = "Entry level NFTs powered by ERC1155. The silver NFTs are mined by aspiring collectors and meticulously crafted for accessibility.";
