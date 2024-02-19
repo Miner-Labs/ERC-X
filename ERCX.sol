@@ -1143,7 +1143,7 @@ contract ERC_X is ERCX {
     string public baseTokenURI;
     
     uint8 private constant _decimals = 18;
-    uint256 private constant _totalTokens = 100000;
+    uint256 private constant _totalTokens = 10000;
     uint256 private constant _tokensPerNFT = 1;
     string private constant _name = "MINER";
     string private constant _ticker = "MINER";
